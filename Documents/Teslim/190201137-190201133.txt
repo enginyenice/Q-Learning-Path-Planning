@@ -1,0 +1,666 @@
+# --------------------------------------------------------------------------------
+from texttable import Texttable
+
+class FileOperation:
+    fileName = ""
+    f = any
+
+    def __init__(self) -> None:
+        self.fileName = "result.txt"
+
+    def OutputFile(self, matrix,startPos,targetPos,shortedPath):
+        f = open(self.fileName, "w+")
+        result_text = ""
+        table = Texttable()
+        result_text = result_text + "BILGILENDIRME TABLOSU \n\n"
+        table.add_rows([
+            ["BILGI", "ICERIK" ],
+            ["Duvar","[K]"],
+            ["Yol","[G]"],
+            ["Yukseklik",str(len(matrix))],
+            ["Genislik",str(len(matrix[0]))],
+            ["Baslangic(Ajan)","X:"+str(startPos[0])+" Y:"+str(startPos[1])],
+            ["Hedef(Odul)","X:"+str(targetPos[0])+" Y:"+str(targetPos[1])]
+        ])
+                        
+        result_text = result_text + table.draw() + "\n\n"
+        result_text = result_text + "EN KISA YOL HAREKET TABLOSU \n\n"
+        t = Texttable()
+        pathTextArray = [['ADIM SAYISI', 'X','Y']]
+        for location in range(len(shortedPath)):
+                step = str(location+1) + ". adim"
+                pathTextArray.append([step,str(shortedPath[location][0]),str(shortedPath[location][1])])
+        t.add_rows(pathTextArray)
+        result_text = result_text + t.draw()+ "\n\n"
+
+        result_text = result_text + "HARITA \n\n"
+        for x in range(len(matrix)):
+            result_text = result_text+"[ "
+            for y in range(len(matrix[x])):
+                if matrix[x][y] == 0:
+                    result_text = result_text + "("+str(x)+","+str(y)+",G) "
+                else:
+                    result_text = result_text + "("+str(x)+","+str(y)+",K) "
+            result_text = result_text + "],\n"
+        
+        f.write(result_text)
+        f.close()
+# --------------------------------------------------------------------------------
+import matplotlib.pyplot as plt
+
+class Plot:
+    graphicElement = []
+
+    def __init__(self,title):
+        plt.title(title)
+        self.clear()
+
+    def show(self):
+        for i in self.graphicElement:
+            plt.plot(i[1], i[2], label=i[0], linewidth = 1)
+        plt.legend()
+        plt.show()
+
+    def add_dot(self, name, y):
+        control = False
+        for i in self.graphicElement:
+            if i[0] == name:
+                control = True
+                i[1].append(len(i[1])+1)
+                i[2].append(y)
+        if not control:
+            self.graphicElement.append([name,[1],[y]])
+
+    def clear(self):
+        self.graphicElement.clear()
+
+
+# --------------------------------------------------------------------------------
+from random import randint, choice,uniform
+
+class QLearning:
+    directionMatrix = [[-1, 0 ],  # up
+                       [-1, 1 ],  # up-right
+                       [ 0, 1 ],  # right
+                       [ 1, 1 ],  # down-right
+                       [ 1, 0 ],  # down
+                       [ 1,-1 ],  # down-left
+                       [ 0,-1 ],  # left
+                       [-1,-1 ]]  # up-left
+    matrix = []                   # Matris
+    RTable = []                   # R tablosu
+    QTable = []                   # Q tablosu
+    startPos = []                 # Başlangıç koordinatı
+    targetPos = []                # Hedef koordinatı
+    learningRate = 0.8            # Öğrenme oranı
+    currentState = []             # Ajanın aktif konumu
+    previousState = []            # Ajanın önceki konumu
+    action = 0                    # Ajanın yaptığı hareketin yönü
+    learnedPath = []              # Öğrenilmiş en kısa yol
+    path = []                     # Her denemenin tutulduğu geçici yol değişkeni
+    cost = 0                      # Her yol denemesinde edinilen kazanç
+    wallRate = 3                # Matristeki engel oranı
+
+    ## CONSTRUCTER ##
+    def __init__(self, row, column, moveScore, wallScore, targetScore, outsideScore):
+        self.row = row
+        self.column = column
+        self.moveScore = moveScore
+        self.wallScore = wallScore
+        self.targetScore = targetScore
+        self.outsideScore = outsideScore
+        self.create_matrix()
+
+    ## R veya Q Matris isminden koordinat ##
+    def coord_from_name(self, name):
+        for x in range(self.row):
+            for y in range(self.column):
+                if (y + (self.column * x)) == name:
+                    return [x, y]
+
+    ## Koordinattan R veya Q Matris ismi  ##
+    def name_from_coord(self, coord):
+        return coord[1] + (self.column * coord[0])
+
+    ## Matrise göre girilen koordinattan aksiyon sonucu elde edilen r tablosu değeri ##
+    def r_value_from_matrix(self, state, action):
+        statePos = self.coord_from_name(state)
+        actionPos = self.directionMatrix[action]
+        actionPos = [statePos[0] + actionPos[0], statePos[1] + actionPos[1]]
+        if 0 <= actionPos[0] < self.row and 0 <= actionPos[1] < self.column:
+            if self.matrix[actionPos[0]][actionPos[1]] == 0:
+                return self.moveScore
+            elif self.matrix[actionPos[0]][actionPos[1]] == 1:
+                return self.wallScore
+        else:
+            return self.outsideScore
+
+    ## Matris, Q Tablosu, R Tablosu oluşturma ##
+    def create_matrix(self):
+        self.matrix.clear()
+        self.QTable.clear()
+        self.RTable.clear()
+        self.startPos = [-1,-1]
+        self.targetPos = [-1,-1]
+        self.currentState = []
+        self.previousState = []
+
+        for i in range(self.row):
+            temp = []
+            for j in range(self.column):
+                if randint(0, 9) < self.wallRate:
+                    temp.append(1)
+                else:
+                    temp.append(0)
+            self.matrix.append(temp)
+
+        for i in range(self.row * self.column):
+            tempQtable = []
+            tempRtable = []
+            for j in range(8):
+                tempQtable.append(0)
+                tempRtable.append(0)
+            self.QTable.append(tempQtable)
+            self.RTable.append(tempRtable)
+
+        for x in range(len(self.RTable)):
+            for y in range(8):
+                self.RTable[x][y] = self.r_value_from_matrix(x, y)
+
+    ## R tablosu güncelleme ##
+    def update_r_table(self, coord, stateType, add = False):
+        for i in range(8):
+            if self.action_control(coord, i):
+                temp = self.action_coord(coord, i)
+                tempAction = i + 4 if 0 <= i < 4 else i - 4
+                self.RTable[self.name_from_coord(temp)][tempAction] = (self.wallScore if stateType == "wall" else self.targetScore) if add else self.moveScore
+
+    ## Başlangıç poziyonunu belirle ##
+    def start_position(self, x, y):
+        self.startPos = [x, y]
+        self.currentState = self.startPos
+        self.previousState = self.currentState
+
+    ## Hedef pozisyonunu belirle ##
+    def target_position(self, x, y):
+        self.targetPos = [x, y]
+
+    ## Girilen state'ten aksiyon yönüne hareket sonrası bulunulan koordinat ##
+    def action_coord(self, state, action):
+        return [state[0] + self.directionMatrix[action][0], state[1] + self.directionMatrix[action][1]]
+
+    ## Girilen state'in aksiyon yönünde hareketi mümkün mü? ##
+    def action_control(self, state, action):
+        actionCoord = self.action_coord(state, action)
+        return True if 0 <= actionCoord[0] < self.row and 0 <= actionCoord[1] < self.column else False
+
+    ## Aksiyon seç ##
+    def choose_action(self, state):
+        # if random.uniform(0, 1) < 0.98:
+        temp_Q_row = self.QTable[self.name_from_coord(state)]
+        temp_R_row = self.RTable[self.name_from_coord(state)]
+        temp_Q_List = []
+        for i in range(len(temp_R_row)):
+            if temp_R_row[i] != -100:
+                temp_Q_List.append(temp_Q_row[i])
+        maxValue = max(temp_Q_List)
+
+        temp_Selectable = []
+        for i in range(len(temp_Q_row)):
+            if temp_R_row[i] != -100 and temp_Q_row[i] == maxValue:
+                temp_Selectable.append(i)
+
+        return choice(temp_Selectable)
+
+    ## State'ten Action yönündeki Q tablosu değerini hesaplar. ##
+    def calculate_q_value(self, state, action):
+        actionCoord = self.action_coord(state, action)
+        maxValueOfAction = self.QTable[self.name_from_coord(actionCoord)][self.choose_action(actionCoord)]
+        return self.RTable[self.name_from_coord(state)][action] + (self.learningRate * maxValueOfAction)
+
+    ## Matris üzerinde tek kare hareket ve konum kontrolü ##
+    def move(self):
+        self.path.append(self.currentState)
+        self.previousState = self.currentState
+        self.action = self.choose_action(self.currentState)
+        self.currentState = self.action_coord(self.currentState, self.action)
+        self.QTable[self.name_from_coord(self.previousState)][self.action] = self.calculate_q_value(self.previousState, self.action)
+        self.cost += self.QTable[self.name_from_coord(self.previousState)][self.action]
+
+        if self.currentState == self.targetPos:
+            self.path.append(self.currentState)
+            tempPath = self.path.copy()
+            tempCost = self.cost
+            self.path.clear()
+            self.cost = 0
+            self.currentState = self.startPos
+            self.previousState = self.currentState
+            return 2, tempPath, tempCost
+
+        elif self.matrix[self.currentState[0]][self.currentState[1]] == 1:
+            self.path.append(self.currentState)
+            tempPath = self.path.copy()
+            tempCost = self.cost
+            self.path.clear()
+            self.cost = 0
+            self.currentState = self.startPos
+            self.previousState = self.currentState
+            return 1, tempPath, tempCost
+
+        elif self.matrix[self.currentState[0]][self.currentState[1]] == 0:
+            return 0, [], 0
+
+# --------------------------------------------------------------------------------
+class Colors:
+    COlOR_START = (0, 0, 0)
+    COLOR_TARGET = (255, 255, 255)
+    COLOR_WALL = (210, 0, 0)
+    COLOR_BACKGROUND = (110, 110, 110)
+    COLOR_SIDEMENU = (130, 130, 130)
+    COLOR_LINE = (150, 150, 150)
+    BTN_COLOR_ACTIVE = (40, 40, 40)
+    BTN_COLOR_PASSIVE = (100, 100, 100)
+
+# --------------------------------------------------------------------------------
+class Screen:
+    MENU_WIDTH = 200
+    HEIGHT = 700
+    WIDTH = HEIGHT + MENU_WIDTH
+    MENU_X = HEIGHT
+    MENU_Y = 0
+    GRID_GAP = 10
+    GRID_LINE_BORDER= 1
+    GRID_SIZE = 0
+    MATRIX_ROW = 10
+    MATRIX_COLUMN = 10
+# --------------------------------------------------------------------------------
+from helper.qlearning import QLearning
+from helper.graphic import Plot
+from helper.file_operation import FileOperation
+from settings.screen import Screen
+from settings.colors import Colors
+import pygame
+
+class Game:
+    pygame.init()
+
+    ## CONTROLLER ##
+    APP_RUNNING = True
+    DRAWING = False
+    DRAWING_WALL = False
+    DRAWING_WALL_ADD_OR_REMOVE = False
+    DRAWING_START = False
+    DRAWING_TARGET = False
+    DRAWING_ONETIME = False
+    MOUSE_PREV_POS = (0, 0)
+    LEARNING = False
+    TEMP_PATH = []
+    SHORTEST_PATH = []
+    IS_LEARNED = 0
+    FOUND_PATH_COUNT = 0
+    SHOWLEARNEDPATH = False
+    FILE_WRITER = FileOperation()
+    BTN_COLOR_WALL = Colors.BTN_COLOR_PASSIVE
+    BTN_COLOR_START = Colors.BTN_COLOR_PASSIVE
+    BTN_COLOR_TARGET = Colors.BTN_COLOR_PASSIVE
+    BTN_COLOR_PLAY = Colors.BTN_COLOR_PASSIVE
+    BTN_COLOR_PLOT = Colors.BTN_COLOR_PASSIVE
+    BTN_COLOR_RESTART = Colors.BTN_COLOR_PASSIVE
+    TEXT_FONT = pygame.font.SysFont("calibri", 30)
+    #####################
+
+    ## BUTTONS ##
+    TEXT_WALL = TEXT_FONT.render("Engel", True, (255, 255, 255))
+    TEXT_START = TEXT_FONT.render("Başlangıç", True, (255, 255, 255))
+    TEXT_TARGET = TEXT_FONT.render("Hedef", True, (255, 255, 255))
+    TEXT_PLAY = TEXT_FONT.render("Başlat", True, (255, 255, 255))
+    TEXT_STOP = TEXT_FONT.render("Durdur", True, (255, 255, 255))
+    TEXT_PLOT = TEXT_FONT.render("Grafik", True, (255, 255, 255))
+    TEXT_RESTART = TEXT_FONT.render("Sıfırla", True, (255, 255, 255))
+    WALL = pygame.Rect(Screen.MENU_X + Screen.GRID_GAP + 20, Screen.GRID_GAP, TEXT_START.get_width() + 10, 40)
+    START = pygame.Rect(Screen.MENU_X + Screen.GRID_GAP + 20, Screen.GRID_GAP + 50, TEXT_START.get_width() + 10, 40)
+    TARGET = pygame.Rect(Screen.MENU_X + Screen.GRID_GAP + 20, Screen.GRID_GAP + 100, TEXT_START.get_width() + 10, 40)
+    PLAY = pygame.Rect(Screen.MENU_X + Screen.GRID_GAP + 20, Screen.GRID_GAP + 150, TEXT_START.get_width() + 10, 40)
+    PLOT = pygame.Rect(Screen.MENU_X + Screen.GRID_GAP + 20, Screen.GRID_GAP + 200, TEXT_START.get_width() + 10, 40)
+    RESTART = pygame.Rect(Screen.MENU_X + Screen.GRID_GAP + 20, Screen.GRID_GAP + 250, TEXT_START.get_width() + 10, 40)
+    #####################
+
+    qlearning = None
+
+    def __init__(self, row, column):
+        self.screen = pygame.display.set_mode((Screen.WIDTH, Screen.HEIGHT),pygame.HWSURFACE)
+        pygame.display.set_caption("Q-LEARNING")
+        self.screen.fill((255, 255, 255))
+        pygame.display.update()
+        self.qlearning = QLearning(row=row, column=column, moveScore=-0.1, wallScore=-50, targetScore=100, outsideScore=-100)
+        self.calculate_grid_size()
+        self.refresh_screen()
+        self.plt = Plot("Kazanç, Adım sayısı Grafiği")
+
+
+
+    def calculate_grid_size(self):
+        if self.qlearning.row >= self.qlearning.column:
+            Screen.GRID_SIZE = (
+                    (Screen.HEIGHT - (Screen.GRID_LINE_BORDER * (self.qlearning.row + 1))- (Screen.GRID_GAP * 2))
+                    / self.qlearning.row)
+        else:
+            Screen.GRID_SIZE = (
+                    (Screen.HEIGHT - (Screen.GRID_LINE_BORDER * (self.qlearning.column + 1)) - (Screen.GRID_GAP * 2))
+                    / self.qlearning.column)
+
+    @staticmethod
+    def getMousePosInMatrix(arg):
+        if arg[0] > Screen.GRID_GAP and arg[1] > Screen.GRID_GAP:
+            x = (arg[0] - Screen.GRID_GAP) / (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER)
+            y = (arg[1] - Screen.GRID_GAP) / (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER)
+        else:
+            x = -1
+            y = -1
+        return [int(y), int(x)]
+
+    def refresh_screen(self):
+        self.screen.fill(Colors.COLOR_BACKGROUND)
+        pygame.draw.rect(self.screen, color=Colors.COLOR_SIDEMENU,
+                                      rect=[Screen.HEIGHT, 0, Screen.MENU_WIDTH, Screen.HEIGHT])
+        if self.LEARNING:
+            pygame.draw.rect(self.screen, Colors.BTN_COLOR_ACTIVE, self.PLAY)
+            self.screen.blit(self.TEXT_STOP, (self.PLAY.x + 5, self.PLAY.y + 5))
+        else:
+            pygame.draw.rect(self.screen, Colors.BTN_COLOR_PASSIVE, self.PLAY)
+            self.screen.blit(self.TEXT_PLAY, (self.PLAY.x + 5, self.PLAY.y + 5))
+
+        pygame.draw.rect(self.screen, self.BTN_COLOR_WALL, self.WALL)
+        self.screen.blit(self.TEXT_WALL, (self.WALL.x + 5, self.WALL.y + 5))
+        pygame.draw.rect(self.screen, self.BTN_COLOR_START, self.START)
+        self.screen.blit(self.TEXT_START, (self.START.x + 5, self.START.y + 5))
+        pygame.draw.rect(self.screen, self.BTN_COLOR_TARGET, self.TARGET)
+        self.screen.blit(self.TEXT_TARGET, (self.TARGET.x + 5, self.TARGET.y + 5))
+        pygame.draw.rect(self.screen, self.BTN_COLOR_PLOT, self.PLOT)
+        self.screen.blit(self.TEXT_PLOT, (self.PLOT.x + 5, self.PLOT.y + 5))
+        pygame.draw.rect(self.screen, self.BTN_COLOR_RESTART, self.RESTART)
+        self.screen.blit(self.TEXT_RESTART, (self.RESTART.x + 5, self.RESTART.y + 5))
+
+        for x in range(self.qlearning.row):
+            for y in range(self.qlearning.column):
+                pygame.draw.rect(self.screen, color=Colors.COLOR_LINE,
+                                              rect=[
+                                                (y * (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER)) + Screen.GRID_GAP,
+                                                (x * (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER)) + Screen.GRID_GAP,
+                                                Screen.GRID_SIZE + (Screen.GRID_LINE_BORDER * 2),
+                                                Screen.GRID_SIZE + (Screen.GRID_LINE_BORDER * 2)],
+                                                width=Screen.GRID_LINE_BORDER)
+
+                if self.qlearning.matrix[x][y] == 1:
+                    pygame.draw.rect(self.screen, color=Colors.COLOR_WALL,
+                                                  rect=[
+                                                    (y * (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER))
+                                                    + Screen.GRID_GAP + Screen.GRID_LINE_BORDER,
+                                                    (x * (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER))
+                                                    + Screen.GRID_GAP + Screen.GRID_LINE_BORDER,
+                                                    Screen.GRID_SIZE,
+                                                    Screen.GRID_SIZE])
+
+        rate = [0,0, 155 / (len(self.TEMP_PATH) - 1)]
+ 
+        tempPath = self.SHORTEST_PATH if self.SHOWLEARNEDPATH else self.TEMP_PATH
+        for x in range(len(tempPath)-1):
+            pygame.draw.rect(self.screen, color=(0, 0, 100 + rate[2] * x),
+                                          rect=[
+                                            (tempPath[x][1]*(Screen.GRID_SIZE + Screen.GRID_LINE_BORDER))
+                                            + Screen.GRID_GAP + Screen.GRID_LINE_BORDER,
+                                            (tempPath[x][0]*(Screen.GRID_SIZE + Screen.GRID_LINE_BORDER))
+                                            + Screen.GRID_GAP + Screen.GRID_LINE_BORDER,
+                                            Screen.GRID_SIZE,
+                                            Screen.GRID_SIZE])
+
+        if self.qlearning.startPos != [-1, -1]:
+            pygame.draw.rect(self.screen, color=Colors.COlOR_START,
+                                          rect=[
+                                            (self.qlearning.startPos[1] *
+                                            (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER))
+                                            + Screen.GRID_GAP + Screen.GRID_LINE_BORDER,
+                                            (self.qlearning.startPos[0] *
+                                            (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER))
+                                            + Screen.GRID_GAP + Screen.GRID_LINE_BORDER,
+                                            Screen.GRID_SIZE,
+                                            Screen.GRID_SIZE])
+
+        if self.qlearning.targetPos != [-1, -1]:
+            pygame.draw.rect(self.screen, color=Colors.COLOR_TARGET,
+                             rect=[
+                                 (self.qlearning.targetPos[1] *
+                                  (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER))
+                                 + Screen.GRID_GAP + Screen.GRID_LINE_BORDER,
+                                 (self.qlearning.targetPos[0] *
+                                  (Screen.GRID_SIZE + Screen.GRID_LINE_BORDER))
+                                 + Screen.GRID_GAP + Screen.GRID_LINE_BORDER,
+                                 Screen.GRID_SIZE,
+                                 Screen.GRID_SIZE])
+
+        pygame.display.update()
+
+    def mainLoop(self):
+
+        ## MAIN LOOP
+        while self.APP_RUNNING:
+            self.refresh_screen()
+
+            ## LEARNING - Sadece hedefe ulaştığında çizim
+            while self.LEARNING:
+                status, self.TEMP_PATH, cost = self.qlearning.move()
+                if status != 0: # Hedefe ulaşmadıysa veya duvara çarpmadıysa
+                    if status == 2:
+                        if self.TEMP_PATH == self.SHORTEST_PATH:
+                            if self.IS_LEARNED == 50:
+                                self.LEARNING = False
+                                self.SHOWLEARNEDPATH = True
+                                self.FILE_WRITER.OutputFile(self.qlearning.matrix,
+                                                            self.qlearning.startPos,
+                                                            self.qlearning.targetPos,
+                                                            self.SHORTEST_PATH)
+                                self.refresh_screen()
+                                self.plt.show()
+                            else:
+                                self.IS_LEARNED += 1
+                        else:
+                            self.SHORTEST_PATH = self.TEMP_PATH.copy()
+                            self.IS_LEARNED = 0
+
+                        self.plt.add_dot("Kazanç/Maliyet", cost)
+                        self.plt.add_dot("Adım Sayısı", len(self.TEMP_PATH))
+                    break
+
+            for e in pygame.event.get():
+
+                if e.type == pygame.MOUSEBUTTONUP:
+                    if e.button == 1:
+                        self.DRAWING = False
+                        Colors.BTN_COLOR_PLOT = Colors.BTN_COLOR_PASSIVE
+                        Colors.BTN_COLOR_RESTART = Colors.BTN_COLOR_PASSIVE
+                        self.refresh_screen()
+
+                if e.type == pygame.MOUSEBUTTONDOWN:
+                    mousePrevPos = self.getMousePosInMatrix(pygame.mouse.get_pos())
+
+                    if e.button == 1:
+                        if 0 <= mousePrevPos[0] < self.qlearning.row and 0 <= mousePrevPos[1] < self.qlearning.column:
+                            self.DRAWING_ONETIME = True
+                            self.DRAWING = True
+                        if self.WALL.collidepoint(e.pos):
+                            self.BTN_COLOR_WALL = Colors.BTN_COLOR_ACTIVE
+                            self.BTN_COLOR_START = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_TARGET = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLAY = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLOT = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_RESTART = Colors.BTN_COLOR_PASSIVE
+                            self.DRAWING_WALL = True
+                            self.DRAWING_START = False
+                            self.DRAWING_TARGET = False
+                            self.refresh_screen()
+
+                        elif self.START.collidepoint(e.pos):
+                            self.BTN_COLOR_WALL = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_START = Colors.BTN_COLOR_ACTIVE
+                            self.BTN_COLOR_TARGET = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLAY = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLOT = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_RESTART = Colors.BTN_COLOR_PASSIVE
+                            self.DRAWING_WALL = False
+                            self.DRAWING_START = True
+                            self.DRAWING_TARGET = False
+                            self.refresh_screen()
+
+                        elif self.TARGET.collidepoint(e.pos):
+                            self.BTN_COLOR_WALL = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_START = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_TARGET = Colors.BTN_COLOR_ACTIVE
+                            self.BTN_COLOR_PLAY = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLOT = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_RESTART = Colors.BTN_COLOR_PASSIVE
+                            self.DRAWING_WALL = False
+                            self.DRAWING_START = False
+                            self.DRAWING_TARGET = True
+                            self.refresh_screen()
+
+                        elif self.PLAY.collidepoint(e.pos)\
+                                and self.qlearning.startPos != [-1,-1] \
+                                and self.qlearning.targetPos != [-1,-1]:
+                            self.BTN_COLOR_WALL = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_START = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_TARGET = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLOT = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_RESTART = Colors.BTN_COLOR_PASSIVE
+                            if self.LEARNING:
+                                self.LEARNING = False
+                                self.BTN_COLOR_PLAY = Colors.BTN_COLOR_PASSIVE
+                            else:
+                                self.LEARNING = True
+                                self.BTN_COLOR_PLAY = Colors.BTN_COLOR_ACTIVE
+
+                        elif self.PLOT.collidepoint(e.pos):
+                            self.BTN_COLOR_WALL = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_START = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_TARGET = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLAY = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLOT = Colors.BTN_COLOR_ACTIVE
+                            self.BTN_COLOR_RESTART = Colors.BTN_COLOR_PASSIVE
+                            self.DRAWING_WALL = False
+                            self.DRAWING_START = False
+                            self.DRAWING_TARGET = False
+                            self.refresh_screen()
+                            self.plt.show()
+                            self.BTN_COLOR_PLOT = Colors.BTN_COLOR_PASSIVE
+                            self.refresh_screen()
+
+                        elif self.RESTART.collidepoint(e.pos):
+                            self.BTN_COLOR_WALL = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_START = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_TARGET = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLAY = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_PLOT = Colors.BTN_COLOR_PASSIVE
+                            self.BTN_COLOR_RESTART = Colors.BTN_COLOR_PASSIVE
+                            self.DRAWING_WALL = False
+                            self.DRAWING_START = False
+                            self.DRAWING_TARGET = False
+                            self.TEMP_PATH.clear()
+                            self.SHORTEST_PATH.clear()
+                            self.SHOWLEARNEDPATH = False
+                            self.plt.clear()
+                            self.qlearning.create_matrix()
+                            self.refresh_screen()
+
+                if self.DRAWING and self.LEARNING != True:
+                    temp = self.getMousePosInMatrix(pygame.mouse.get_pos())
+                    if self.DRAWING_WALL:
+                        if self.DRAWING_ONETIME:
+                            if self.qlearning.matrix[temp[0]][temp[1]] == 0:
+                                self.qlearning.matrix[temp[0]][temp[1]] = 1
+                                self.qlearning.update_r_table(temp, "wall", True)
+                                self.DRAWING_WALL_ADD_OR_REMOVE = True
+                            else:
+                                self.qlearning.matrix[temp[0]][temp[1]] = 0
+                                self.qlearning.update_r_table(temp, "wall", False)
+                                self.DRAWING_WALL_ADD_OR_REMOVE = False
+                            self.DRAWING_ONETIME = False
+                            self.MOUSE_PREV_POS = temp
+                            self.refresh_screen()
+                        if 0 <= temp[0] < self.qlearning.row and 0 <= temp[1] < self.qlearning.column and self.MOUSE_PREV_POS != temp:
+                            if self.DRAWING_WALL_ADD_OR_REMOVE:
+                                self.qlearning.matrix[temp[0]][temp[1]] = 1
+                                self.qlearning.update_r_table(temp, "wall", True)
+                            else:
+                                self.qlearning.matrix[temp[0]][temp[1]] = 0
+                                self.qlearning.update_r_table(temp, "wall", False)
+                            self.MOUSE_PREV_POS = temp
+                            self.refresh_screen()
+                    elif self.DRAWING_START:
+                        if self.DRAWING_ONETIME:
+                            if self.qlearning.startPos[0] == temp[0] and self.qlearning.startPos[1] == temp[1]:
+                                self.qlearning.start_position(-1, -1)
+                            else:
+                                if self.qlearning.matrix[temp[0]][temp[1]] == 0:
+                                    if self.qlearning.targetPos[0] != temp[0] or self.qlearning.targetPos[1] != temp[1]:
+                                        self.qlearning.start_position(temp[0], temp[1])
+                            self.DRAWING_ONETIME = False
+                            self.refresh_screen()
+                    elif self.DRAWING_TARGET:
+                        if self.DRAWING_ONETIME:
+                            if self.qlearning.targetPos[0] == temp[0] and self.qlearning.targetPos[1] == temp[1]:
+                                self.qlearning.target_position(-1, -1)
+                                self.qlearning.update_r_table(temp, "target", False)
+                            else:
+                                if self.qlearning.matrix[temp[0]][temp[1]] == 0:
+                                    if self.qlearning.startPos[0] != temp[0] or self.qlearning.startPos[1] != temp[1]:
+                                        self.qlearning.target_position(temp[0], temp[1])
+                                        self.qlearning.update_r_table(temp, "target", True)
+                            self.DRAWING_ONETIME = False
+                            self.refresh_screen()
+
+                # QUIT
+                if e.type == pygame.QUIT:
+                    self.APP_RUNNING = False
+                    break
+# --------------------------------------------------------------------------------
+import pygame
+import pygame_menu
+from pygame_menu import Theme
+from game import Game
+from settings.screen import Screen
+
+pygame.init()
+pygame.display.set_caption("Q-LEARNING")
+screen = pygame.display.set_mode((300, 500))
+
+def start_the_game():
+    pygame.display.set_mode((Screen.WIDTH, Screen.HEIGHT))
+    app = Game(Screen.MATRIX_ROW,Screen.MATRIX_COLUMN)
+    app.mainLoop()
+    pygame.display.set_mode((300, 500))
+
+def setRow(value):
+    Screen.MATRIX_ROW = value
+def setColumn(value):
+    Screen.MATRIX_COLUMN= value
+
+theme = Theme(  background_color=(40, 40, 40),
+                title_background_color=(60, 60, 60),
+                widget_padding=15,
+                selection_color=(106, 126, 250),
+                title_font_color=(106, 126, 250),
+                title_font_size=50,
+                title_offset= (50,10),
+                title_font = pygame_menu.font.FONT_MUNRO,
+                widget_font = pygame_menu.font.FONT_MUNRO,
+                title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_SIMPLE,
+                )
+
+MenuScreen = pygame_menu.menu.Menu("Q-LEARNING", 300, 500, theme=theme)
+
+MenuScreen.add.text_input('MATRIX X : ', default='10', input_type=pygame_menu.locals.INPUT_INT, onchange=setRow)
+MenuScreen.add.text_input('MATRIX Y : ', default='10', input_type=pygame_menu.locals.INPUT_INT, onchange=setColumn)
+MenuScreen.add.button('BASLAT', start_the_game)
+MenuScreen.add.button('CIKIS', pygame_menu.events.EXIT)
+MenuScreen.mainloop(screen)
+
+# --------------------------------------------------------------------------------

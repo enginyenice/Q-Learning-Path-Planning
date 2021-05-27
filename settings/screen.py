@@ -1,0 +1,11 @@
+class Screen:
+    MENU_WIDTH = 200
+    HEIGHT = 700
+    WIDTH = HEIGHT + MENU_WIDTH
+    MENU_X = HEIGHT
+    MENU_Y = 0
+    GRID_GAP = 10
+    GRID_LINE_BORDER= 1
+    GRID_SIZE = 0
+    MATRIX_ROW = 10
+    MATRIX_COLUMN = 10
